@@ -1,7 +1,6 @@
 package nomadblacky.GrooveScorer.main;
 
 import java.awt.BorderLayout;
-import java.awt.Button;
 import java.awt.Component;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -16,23 +15,20 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 
 import javax.swing.JButton;
-import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import javax.swing.JTextField;
 import javax.swing.ProgressMonitor;
 import javax.swing.SwingWorker;
 
-import org.apache.commons.codec.CharEncoding;
-import org.json.JSONObject;
-import org.omg.CORBA.OMGVMCID;
-
 import net.miginfocom.swing.MigLayout;
 import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
+
+import org.apache.commons.lang3.StringUtils;
+import org.json.JSONObject;
 
 public class ScorerFrame extends JFrame implements ActionListener {
 
@@ -122,7 +118,9 @@ public class ScorerFrame extends JFrame implements ActionListener {
 	private void createCSV() throws MyPageClientException {
 		
 		MyPageClient client = new MyPageClient(nesicaIdField.getText(), playerNameField.getText());
-		Path outJsonsDir = Paths.get("./result/" + client.getPlayerName(), "json");
+		
+		String replacedPlayerName = StringUtils.replacePattern(client.getPlayerName(), "\\p{Punct}", "_");
+		Path outJsonsDir = Paths.get("./result/" + replacedPlayerName, "json");
 		
 		try {
 			client.doAuth();
@@ -180,9 +178,9 @@ public class ScorerFrame extends JFrame implements ActionListener {
 		pm.setNote("CSVファイルを作成中…");
 		
 		Scorer.createCSV(
-				Paths.get("./result", client.getPlayerName(), "json"),
-				Paths.get("./result", client.getPlayerName()),
-				client.getPlayerName() + ".csv",
+				Paths.get("./result", replacedPlayerName, "json"),
+				Paths.get("./result", replacedPlayerName),
+				replacedPlayerName + ".csv",
 				Charset.forName(charsetField.getText()));
 		
 		pm.close();
