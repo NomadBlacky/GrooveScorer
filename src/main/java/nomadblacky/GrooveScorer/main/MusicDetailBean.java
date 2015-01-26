@@ -1,7 +1,7 @@
 package nomadblacky.GrooveScorer.main;
 
 
-public class MusicDetailBean {
+public class MusicDetailBean implements Comparable<MusicDetailBean> {
 	
 	public static final String[] CSV_HEADER = new String[] {
 		"id",
@@ -569,6 +569,11 @@ public class MusicDetailBean {
 		default:
 			throw new RuntimeException();
 		}
+	}
+
+	@Override
+	public int compareTo(MusicDetailBean o) {
+		return this.id - o.getId();
 	}
 
 }

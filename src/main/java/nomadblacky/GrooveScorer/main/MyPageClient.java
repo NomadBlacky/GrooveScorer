@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.management.RuntimeErrorException;
+
 import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
-import nomadblacky.GrooveScorer.Exceptions.JsonStatusException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageAccessFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
 
@@ -33,16 +34,18 @@ import org.json.JSONObject;
  *
  */
 public class MyPageClient {
-	private String nesicaId;
-	private String playerName;
+	private final String nesicaId;
+	private final String password;
+	private final String playerName;
 	
-	private CloseableHttpClient client;
-	private BasicCookieStore cookieStore;
+	private final CloseableHttpClient client;
+	private final BasicCookieStore cookieStore;
 
-	public MyPageClient(String nesicaId, String playerName) {
+	public MyPageClient(String nesicaId, String password) {
 		
 		this.nesicaId   = nesicaId;
-		this.playerName = playerName;
+		this.password = password;
+		this.playerName = null;
 		
     	// クライアントのリクエスト設定
     	RequestConfig requestConfig = RequestConfig.custom()
@@ -65,8 +68,28 @@ public class MyPageClient {
 		return nesicaId;
 	}
 	
-	public String getPlayerName() {
-		return playerName;
+	public String getPassword() {
+		return password;
+	}
+	
+	public String getPlayerName() throws MyPageClientException, ClientProtocolException, IOException {
+		if(playerName == null) {
+			if(doAuth()) {
+				HttpGet get = new HttpGet("https://mypage.groovecoaster.jp/sp/json/player_data.php");
+				try(CloseableHttpResponse res = client.execute(get)) {
+					HttpEntity body = res.getEntity();
+					JSONObject jsonRoot = new JSONObject(EntityUtils.toString(body));
+
+					return jsonRoot.getJSONObject("player_data").getString("player_name");
+				}
+			}
+			else {
+				throw new RuntimeException(new AuthenticationFailedException(nesicaId, password));
+			}
+		}
+		else {
+			return playerName;
+		}
 	}
 
 	public boolean doAuth() throws MyPageClientException {
@@ -75,8 +98,8 @@ public class MyPageClient {
 			// 認証ページへのリクエスト設定
 			HttpPost post = new HttpPost("https://mypage.groovecoaster.jp/sp/login/auth_con.php");
 			List<NameValuePair> params = new ArrayList<NameValuePair>();
-			params.add(new BasicNameValuePair("nesysCardId", nesicaId));
-			params.add(new BasicNameValuePair("playerName", playerName));
+			params.add(new BasicNameValuePair("nesicaCardId", nesicaId));
+			params.add(new BasicNameValuePair("password", password));
 			post.setEntity(new UrlEncodedFormEntity(params));
 			
 			try(CloseableHttpResponse response = client.execute(post)) {
@@ -88,7 +111,7 @@ public class MyPageClient {
 				}
 				
 				if( !hasSession() ) {
-					throw new AuthenticationFailedException(nesicaId, playerName);
+					throw new AuthenticationFailedException(nesicaId, password);
 				}
 			}
 		}

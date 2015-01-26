@@ -15,10 +15,12 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.ProgressMonitor;
 import javax.swing.SwingWorker;
@@ -28,37 +30,42 @@ import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.client.ClientProtocolException;
 import org.json.JSONObject;
 
 public class ScorerFrame extends JFrame implements ActionListener {
 
 	private static final long serialVersionUID = 1L;
 
-	JTextField nesicaIdField, playerNameField, charsetField;
+	JTextField nesicaIdField;
+	JPasswordField passwordField;
+	JComboBox<String> charsetComboBox;
+	
 	JFrame dialog;
 	ProgressMonitor pm;
 	
 	public ScorerFrame() {
 		
-		setSize(400, 150);
-		setTitle("GrooveScorer");
+		setSize(400, 160);
+		setTitle("GrooveScorer Ver.2対応版");
 		
 		getContentPane().setLayout(new BorderLayout());
 		
 		JPanel center = new JPanel(new MigLayout());
 		JLabel label = new JLabel("nesicaシリアルNo.");
 		nesicaIdField = new JTextField();
-		JLabel label2 = new JLabel("プレイヤーネーム");
-		playerNameField = new JTextField();
+		JLabel label2 = new JLabel("nesica.net パスワード");
+		passwordField = new JPasswordField();
 		JLabel label3 = new JLabel("CSVファイル文字コード");
-		charsetField = new JTextField("Shift-JIS");
+		charsetComboBox = new JComboBox<>( new String[]{"Shift-JIS","UTF-8"} );
+		charsetComboBox.setEditable(true);
 		
 		center.add(label, "w 150,h 20,");
 		center.add(nesicaIdField, "wrap,w 250");
 		center.add(label2, "h 30");
-		center.add(playerNameField, "wrap,w 250");
+		center.add(passwordField, "wrap,w 250");
 		center.add(label3, "h 20");
-		center.add(charsetField, "w 250");
+		center.add(charsetComboBox, "w 250");
 		
 		JPanel south = new JPanel();
 		JButton button = new JButton("取得開始");
@@ -102,7 +109,7 @@ public class ScorerFrame extends JFrame implements ActionListener {
 	private boolean checkValues() {
 		
 		try {
-			Charset.forName(charsetField.getText());
+			Charset.forName((String)charsetComboBox.getSelectedItem());
 		} catch(UnsupportedCharsetException | IllegalCharsetNameException e) {
 			JOptionPane.showMessageDialog(
 					this,
@@ -117,9 +124,16 @@ public class ScorerFrame extends JFrame implements ActionListener {
 	
 	private void createCSV() throws MyPageClientException {
 		
-		MyPageClient client = new MyPageClient(nesicaIdField.getText(), playerNameField.getText());
+		MyPageClient client = new MyPageClient(nesicaIdField.getText(), new String(passwordField.getPassword()));
 		
-		String replacedPlayerName = StringUtils.replacePattern(client.getPlayerName(), "\\p{Punct}", "_");
+		String playerName = null;
+		try {
+			playerName = client.getPlayerName();
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+		
+		String replacedPlayerName = StringUtils.replacePattern(playerName, "\\p{Punct}", "_");
 		Path outJsonsDir = Paths.get("./result/" + replacedPlayerName, "json");
 		
 		try {
@@ -181,7 +195,7 @@ public class ScorerFrame extends JFrame implements ActionListener {
 				Paths.get("./result", replacedPlayerName, "json"),
 				Paths.get("./result", replacedPlayerName),
 				replacedPlayerName + ".csv",
-				Charset.forName(charsetField.getText()));
+				Charset.forName((String)charsetComboBox.getSelectedItem()));
 		
 		pm.close();
 		
