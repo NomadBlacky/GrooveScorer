@@ -134,9 +134,10 @@ public class CSVWriter {
 		OutputStreamWriter writer = new OutputStreamWriter(fos, charset.toString());
 		
 		ICsvBeanWriter beanWriter = new CsvBeanWriter(writer, CsvPreference.STANDARD_PREFERENCE);
+		
+		beanWriter.writeHeader(MusicDetailBean.CSV_HEADER);
 
 		Collections.sort(detailBeans);
-		
 		for(MusicDetailBean bean : detailBeans) {
 			beanWriter.write(bean, MusicDetailBean.CSV_HEADER);
 		}
