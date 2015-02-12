@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.management.RuntimeErrorException;
-
 import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageAccessFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
@@ -84,7 +82,7 @@ public class MyPageClient {
 				}
 			}
 			else {
-				throw new RuntimeException(new AuthenticationFailedException(nesicaId, password));
+				throw new AuthenticationFailedException(nesicaId, password);
 			}
 		}
 		else {
@@ -174,6 +172,48 @@ public class MyPageClient {
 		}
 		
 		return idlist;
+	}
+	
+	public List<IdAndDateTime> getUpdatedMusicIdList() throws MyPageAccessFailedException {
+		
+		List<IdAndDateTime> idDateList = new ArrayList<>();
+		
+		try {
+			HttpGet get = new HttpGet("https://mypage.groovecoaster.jp/sp/json/music_list.php");
+			try(CloseableHttpResponse response = client.execute(get)) {
+				
+				int statusCode = response.getStatusLine().getStatusCode();
+				
+				if(!(statusCode == HttpStatus.SC_OK)) {
+					System.err.println("楽曲ページへのアクセスに失敗");
+					System.err.println("HTTPステータースコード: " + statusCode);
+					return null;
+				}
+				
+				HttpEntity body = response.getEntity();
+				JSONObject jsonRoot = new JSONObject(EntityUtils.toString(body));
+				
+				if(jsonRoot.getInt("status") == 1) {
+					System.err.println("JSONステータスが不正");
+					return null;
+				}
+				
+				JSONArray musics = jsonRoot.getJSONArray("music_list");
+				
+				for(int i = 0; i < musics.length(); i++) {
+					JSONObject object = musics.getJSONObject(i);
+					idDateList.add(new IdAndDateTime(object.getInt("music_id"), object.getString("last_play_time")));
+				}
+				
+			}
+		}
+		catch(Exception e) {
+			e.printStackTrace();
+			return null;
+		}
+		
+		return idDateList;
+		
 	}
 
 	public String getMusicJson(int i) {

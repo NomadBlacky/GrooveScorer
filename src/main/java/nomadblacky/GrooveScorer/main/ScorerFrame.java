@@ -2,6 +2,7 @@ package nomadblacky.GrooveScorer.main;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Desktop;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
@@ -12,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import javax.swing.JButton;
@@ -26,11 +29,9 @@ import javax.swing.ProgressMonitor;
 import javax.swing.SwingWorker;
 
 import net.miginfocom.swing.MigLayout;
-import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.client.ClientProtocolException;
 import org.json.JSONObject;
 
 public class ScorerFrame extends JFrame implements ActionListener {
@@ -40,6 +41,7 @@ public class ScorerFrame extends JFrame implements ActionListener {
 	JTextField nesicaIdField;
 	JPasswordField passwordField;
 	JComboBox<String> charsetComboBox;
+	JButton button;
 	
 	JFrame dialog;
 	ProgressMonitor pm;
@@ -68,7 +70,8 @@ public class ScorerFrame extends JFrame implements ActionListener {
 		center.add(charsetComboBox, "w 250");
 		
 		JPanel south = new JPanel();
-		JButton button = new JButton("取得開始");
+		
+		button = new JButton("取得開始");
 		button.setName("startButton");
 		button.addActionListener(this);
 		
@@ -87,7 +90,13 @@ public class ScorerFrame extends JFrame implements ActionListener {
 		
 		if(source.getName().equals("startButton")) {
 
-			if(!checkValues()) {
+			if(checkValues() == false) {
+				JOptionPane.showMessageDialog(
+						this,
+						"不正な文字コードが指定されています。",
+						"エラー",
+						JOptionPane.ERROR_MESSAGE
+						);
 				return;
 			}
 			
@@ -95,13 +104,19 @@ public class ScorerFrame extends JFrame implements ActionListener {
 				@Override
 				protected Void doInBackground() throws Exception {
 					try {
+						button.setEnabled(false);
 						createCSV();
 					} catch (MyPageClientException e) {
-						;
+						showErrorMessage(e);
+					} finally {
+						button.setEnabled(true);
 					}
 					return null;
 				}
+				
+				
 			};
+
 			worker.execute();
 		}
 	}
@@ -111,82 +126,79 @@ public class ScorerFrame extends JFrame implements ActionListener {
 		try {
 			Charset.forName((String)charsetComboBox.getSelectedItem());
 		} catch(UnsupportedCharsetException | IllegalCharsetNameException e) {
-			JOptionPane.showMessageDialog(
-					this,
-					"不正な文字コードが指定されています。",
-					"エラー",
-					JOptionPane.ERROR_MESSAGE);
 			return false;
 		}
 		
 		return true;
 	}
 	
-	private void createCSV() throws MyPageClientException {
+	private void createCSV() throws Exception {
 		
 		MyPageClient client = new MyPageClient(nesicaIdField.getText(), new String(passwordField.getPassword()));
 		
 		String playerName = null;
-		try {
-			playerName = client.getPlayerName();
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
+		
+		playerName = client.getPlayerName();
 		
 		String replacedPlayerName = StringUtils.replacePattern(playerName, "\\p{Punct}", "_");
 		Path outJsonsDir = Paths.get("./result/" + replacedPlayerName, "json");
 		
-		try {
-			client.doAuth();
-		}
-		catch(AuthenticationFailedException e) {
-			JOptionPane.showMessageDialog(
-					this,
-					e.getMessage(),
-					"エラー",
-					JOptionPane.ERROR_MESSAGE);
-			return;
-		}
+		client.doAuth();
 
-		try {
-			Files.createDirectories(outJsonsDir);
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
-
-		List<Integer> idlist = client.getMusicIdList();
+		Files.createDirectories(outJsonsDir);
 		
-		pm = new ProgressMonitor(this, "実行中…", "", 0, idlist.size());
+		List<IdAndDateTime> idDateList = client.getUpdatedMusicIdList();
+		
+		ArrayList<IdAndDateTime> updated = new ArrayList<>();
+		for(IdAndDateTime idAndDateTime : idDateList) {
+			try {
+				Path path = Paths.get(outJsonsDir.toString(), idAndDateTime.id().toString() + ".json");
+				StringBuilder builder = new StringBuilder();
+				for(String line : Files.readAllLines(path, Charset.defaultCharset())) {
+					builder.append(line);
+				}
+				JSONObject fileJson = new JSONObject(builder.toString());
+				String str = fileJson.optString("last_play_time");
+				if(StringUtils.isEmpty(str)) {
+					updated.add(idAndDateTime);
+					continue;
+				}
+				Date fileJsonDate = IdAndDateTime.parse(str);
+				if(fileJsonDate.before(idAndDateTime.date())) {
+					updated.add(idAndDateTime);
+				}
+			}
+			catch(IOException e) {
+				updated.add(idAndDateTime);
+			}
+		}
+		
+		pm = new ProgressMonitor(this, "実行中…", "", 0, updated.size());
 		pm.setMillisToDecideToPopup(0);
 		pm.setMillisToPopup(0);
 		int count = 0;
 		pm.setProgress(count);
 		
-		for (Integer id : idlist) {
+		for (IdAndDateTime idDate : updated) {
 			
 			if(pm.isCanceled()) {
 				pm.close();
 				return;
 			}
 			
-			String jsonText = client.getMusicJson(id);
+			String jsonText = client.getMusicJson(idDate.id());
 			JSONObject jsonObject = new JSONObject(jsonText);
+			jsonObject = jsonObject.put("last_play_time", idDate.formatDate());
+			
 			pm.setNote(String.format(
 					"(%3d/%3d) : %s",
-					count, idlist.size(), jsonObject.getJSONObject("music_detail").getString("music_title")));
+					count, updated.size(), jsonObject.getJSONObject("music_detail").getString("music_title")));
 			pm.setProgress(count++);
-			try {
-				Files.write(
-						Paths.get(outJsonsDir.toString(), id.toString() + ".json"),
-						jsonText.getBytes(),
-						StandardOpenOption.CREATE);
-			} catch (IOException e) {
-				JOptionPane.showMessageDialog(
-						this,
-						e.getMessage(),
-						"エラー",
-						JOptionPane.ERROR_MESSAGE);
-			}
+			Files.write(
+					Paths.get(outJsonsDir.toString(), idDate.id().toString() + ".json"),
+					jsonObject.toString().getBytes(),
+					StandardOpenOption.CREATE
+					);
 		}
 		
 		pm.setNote("CSVファイルを作成中…");
@@ -199,11 +211,23 @@ public class ScorerFrame extends JFrame implements ActionListener {
 		
 		pm.close();
 		
+		int option =JOptionPane.showConfirmDialog(
+				this
+				, "CSVファイルの作成が完了しました。ファイルを開きますか？"
+				, "成功！"
+				, JOptionPane.YES_NO_OPTION
+				);
+		
+		if(option == JOptionPane.OK_OPTION) {
+			Desktop.getDesktop().open(Paths.get("./result", replacedPlayerName, replacedPlayerName + ".csv").toFile());
+		}
+	}
+	
+	private void showErrorMessage(Throwable e) {
 		JOptionPane.showMessageDialog(
 				this,
-				"CSVファイルの作成が完了しました。",
-				"成功！",
-				JOptionPane.INFORMATION_MESSAGE);
-
+				e.getMessage(),
+				"エラー",
+				JOptionPane.ERROR_MESSAGE);
 	}
 }

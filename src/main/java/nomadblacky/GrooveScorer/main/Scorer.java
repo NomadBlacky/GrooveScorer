@@ -1,18 +1,16 @@
 package nomadblacky.GrooveScorer.main;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Date;
 import java.util.List;
 import java.util.Scanner;
 
-import nomadblacky.GrooveScorer.Exceptions.AuthenticationFailedException;
 import nomadblacky.GrooveScorer.Exceptions.MyPageClientException;
 
 import org.json.JSONObject;
@@ -73,7 +71,10 @@ public class Scorer {
 			System.out.println("OK!");
 		}
 		catch(MyPageClientException e) {
-			
+			System.err.print("ERROR: ");
+			System.err.println(e.getMessage());
+		}
+		catch (IOException e) {
 			System.err.print("ERROR: ");
 			System.err.println(e.getMessage());
 		}
@@ -81,44 +82,46 @@ public class Scorer {
 
 	}
 
-	public static void getJsons(MyPageClient client, Path outJsonsDir) throws MyPageClientException {
+	public static void getJsons(MyPageClient client, Path outJsonsDir) throws IOException, MyPageClientException {
 
 		client.doAuth();
 
-		try {
-			Files.createDirectories(outJsonsDir);
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
+		Files.createDirectories(outJsonsDir);
 
-		List<Integer> idlist = client.getMusicIdList();
+		List<IdAndDateTime> idDateList = client.getUpdatedMusicIdList();
 
-		for (Integer id : idlist) {
-			String jsonText = client.getMusicJson(id);
-			JSONObject jsonObject = new JSONObject(jsonText);
-			System.out.println(id + " : " + jsonObject.getJSONObject("music_detail").getString("music_title"));
-			try {
-				Files.write(
-						Paths.get(outJsonsDir.toString(), id.toString() + ".json"),
-						jsonText.getBytes(),
-						StandardOpenOption.CREATE);
-			} catch (IOException e) {
-				e.printStackTrace();
+		for (IdAndDateTime idDate : idDateList) {
+			Path outJsonPath = Paths.get(outJsonsDir.toString(), idDate.id().toString() + ".json");
+			JSONObject fileJson = new JSONObject(Files.readAllLines(outJsonPath, Charset.defaultCharset()));
+			String str = fileJson.optString("last_play_time");
+			Date fileJsonDate = IdAndDateTime.parse(str);
+			
+			if(idDate.before(fileJsonDate) || str == null) {
+				String jsonText = client.getMusicJson(idDate.id());
+				JSONObject jsonObject = new JSONObject(jsonText);
+				jsonObject = jsonObject.put("last_play_time", idDate.formatDate());
+				
+				System.out.println(idDate.id() + " : " + jsonObject.getJSONObject("music_detail").getString("music_title"));
+				try {
+					Files.write(
+							outJsonPath,
+							jsonObject.toString().getBytes(),
+							StandardOpenOption.CREATE);
+				}
+				catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 
 		}
-
 	}
 
-	public static void createCSV(Path jsonsDir, Path outCsvDir, String fileName, Charset charset) {
+	
+	public static void createCSV(Path jsonsDir, Path outCsvDir, String fileName, Charset charset) throws IOException {
 
 		CSVWriter writer = new CSVWriter(jsonsDir, charset);
-		try {
-			writer.write(outCsvDir, fileName);
-		} catch (IOException e) {
-			// TODO 自動生成された catch ブロック
-			e.printStackTrace();
-		}
+		
+		writer.write(outCsvDir, fileName);
 	}
 
 }
